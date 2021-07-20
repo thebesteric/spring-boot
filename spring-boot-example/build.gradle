@@ -1,0 +1,33 @@
+plugins {
+    id 'java'
+}
+
+group 'org.springframework.boot'
+version '2.6.0-SNAPSHOT'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    annotationProcessor(project(":spring-boot-project:spring-boot-tools:spring-boot-configuration-processor"))
+    implementation(project(":spring-boot-project:spring-boot-starters:spring-boot-starter-web"))
+    implementation(enforcedPlatform(project(":spring-boot-project:spring-boot-dependencies")))
+    implementation(project(":spring-boot-project:spring-boot"))
+    implementation("jakarta.validation:jakarta.validation-api")
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.7.0'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.7.0'
+}
+
+test {
+    useJUnitPlatform()
+}
+
+task "create-dirs" {
+    sourceSets*.java.srcDirs*.each {
+        it.mkdirs()
+    }
+    sourceSets*.resources.srcDirs*.each{
+        it.mkdirs()
+    }
+}
