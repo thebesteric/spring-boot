@@ -16,21 +16,8 @@
 
 package org.springframework.boot;
 
-import java.lang.reflect.Constructor;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Properties;
-import java.util.Set;
-
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.CachedIntrospectionResults;
 import org.springframework.beans.factory.config.BeanDefinition;
@@ -59,25 +46,15 @@ import org.springframework.context.support.AbstractApplicationContext;
 import org.springframework.context.support.GenericApplicationContext;
 import org.springframework.core.GenericTypeResolver;
 import org.springframework.core.annotation.AnnotationAwareOrderComparator;
-import org.springframework.core.env.CommandLinePropertySource;
-import org.springframework.core.env.CompositePropertySource;
-import org.springframework.core.env.ConfigurableEnvironment;
-import org.springframework.core.env.Environment;
-import org.springframework.core.env.MutablePropertySources;
-import org.springframework.core.env.PropertySource;
-import org.springframework.core.env.SimpleCommandLinePropertySource;
-import org.springframework.core.env.StandardEnvironment;
+import org.springframework.core.env.*;
 import org.springframework.core.io.DefaultResourceLoader;
 import org.springframework.core.io.ResourceLoader;
 import org.springframework.core.io.support.SpringFactoriesLoader;
 import org.springframework.core.metrics.ApplicationStartup;
-import org.springframework.util.Assert;
-import org.springframework.util.ClassUtils;
-import org.springframework.util.CollectionUtils;
-import org.springframework.util.ObjectUtils;
-import org.springframework.util.ReflectionUtils;
-import org.springframework.util.StopWatch;
-import org.springframework.util.StringUtils;
+import org.springframework.util.*;
+
+import java.lang.reflect.Constructor;
+import java.util.*;
 
 /**
  * Class that can be used to bootstrap and launch a Spring application from a Java main
@@ -233,6 +210,7 @@ public class SpringApplication {
 	 * @see #setSources(Set)
 	 */
 	public SpringApplication(Class<?>... primarySources) {
+		// primarySource 就是当前启动类
 		this(null, primarySources);
 	}
 
@@ -248,14 +226,20 @@ public class SpringApplication {
 	 */
 	@SuppressWarnings({ "unchecked", "rawtypes" })
 	public SpringApplication(ResourceLoader resourceLoader, Class<?>... primarySources) {
+		// resourceLoader = null
 		this.resourceLoader = resourceLoader;
 		Assert.notNull(primarySources, "PrimarySources must not be null");
+		// 将启动类放入 primarySources，因为启动累就是一个配置类，含有 @Configuration 注解，和 @ComponentScan 注解
 		this.primarySources = new LinkedHashSet<>(Arrays.asList(primarySources));
+		// 根据 classpath 下的类，推算当前 web 的应用类型（webflux，servlet）
 		this.webApplicationType = WebApplicationType.deduceFromClasspath();
-		this.bootstrapRegistryInitializers = new ArrayList<>(
-				getSpringFactoriesInstances(BootstrapRegistryInitializer.class));
+		// 去 spring.factories 中读取 key = BootstrapRegistryInitializer 的类
+		this.bootstrapRegistryInitializers = new ArrayList<>(getSpringFactoriesInstances(BootstrapRegistryInitializer.class));
+		// 去 spring.factories 中读取 key = ApplicationContextInitializer 的类
 		setInitializers((Collection) getSpringFactoriesInstances(ApplicationContextInitializer.class));
+		// 去 spring.factories 中读取 key = ApplicationListener 的类
 		setListeners((Collection) getSpringFactoriesInstances(ApplicationListener.class));
+		// 根据 main 方法推算 main 方法所在的类
 		this.mainApplicationClass = deduceMainApplicationClass();
 	}
 
@@ -281,21 +265,37 @@ public class SpringApplication {
 	 * @return a running {@link ApplicationContext}
 	 */
 	public ConfigurableApplicationContext run(String... args) {
+		// 用来记录当前 SpringBoot 的启动耗时
 		StopWatch stopWatch = new StopWatch();
+		// 开始计时
 		stopWatch.start();
+		// 执行 bootstrapRegistryInitializers，初始化一些扩展配置
 		DefaultBootstrapContext bootstrapContext = createBootstrapContext();
+		// Spring 上下文
 		ConfigurableApplicationContext context = null;
+		// 开启 headless 模式
 		configureHeadlessProperty();
+		// 读取 spring.factories 读取 key = SpringApplicationRunListener 的配置，用来发布事件或者运行监听器
 		SpringApplicationRunListeners listeners = getRunListeners(args);
+		// ★★★ 发布 1、ApplicationStartingEvent 事件
 		listeners.starting(bootstrapContext, this.mainApplicationClass);
 		try {
+			// 将参数封装为一个 ApplicationArguments 对象
 			ApplicationArguments applicationArguments = new DefaultApplicationArguments(args);
+			// ★★★ 预初始化环境：读取环境变量，读取配置文件信息（基于监听器）
+			// 发布 2、ApplicationEnvironmentPreparedEvent 事件，读取全局配置文件 appliction.yaml
 			ConfigurableEnvironment environment = prepareEnvironment(listeners, bootstrapContext, applicationArguments);
+			// 忽略 beanInfo 的 bean
 			configureIgnoreBeanInfo(environment);
+			// 打印 Banner
 			Banner printedBanner = printBanner(environment);
+			// ★★★ 根据 webApplication 创建 Spring 上下文
 			context = createApplicationContext();
 			context.setApplicationStartup(this.applicationStartup);
+			// ★★★ 预初始化，将配置累读取为 BeanDefinition
 			prepareContext(bootstrapContext, context, environment, listeners, applicationArguments, printedBanner);
+			// ★★★ 刷新上下文，正式进入 Spring IOC 加载过程
+			// ★★★ 同时在 ServletWebServerApplicationContext 的 onRefresh 中启动了内嵌的 Tomcat
 			refreshContext(context);
 			afterRefresh(context, applicationArguments);
 			stopWatch.stop();
@@ -329,13 +329,18 @@ public class SpringApplication {
 	private ConfigurableEnvironment prepareEnvironment(SpringApplicationRunListeners listeners,
 			DefaultBootstrapContext bootstrapContext, ApplicationArguments applicationArguments) {
 		// Create and configure the environment
+		// 根据 webApplicationType 创建 Environment，过程中会读取 java 环境变量和系统环境变量
 		ConfigurableEnvironment environment = getOrCreateEnvironment();
+		// 将命令行参数加入 Environment 对象中
 		configureEnvironment(environment, applicationArguments.getSourceArgs());
+		// 将 @PropertySource 的配置信息放在第一位，因为读取 @PropertySource 优先级是最低的
 		ConfigurationPropertySources.attach(environment);
+		// 读取全局配置文件，发布了 ApplicationEnvironmentPreparedEvent 事件
 		listeners.environmentPrepared(bootstrapContext, environment);
 		DefaultPropertiesPropertySource.moveToEnd(environment);
 		Assert.state(!environment.containsProperty("spring.main.environment-prefix"),
 				"Environment prefix cannot be set via properties.");
+		// 将所有 spring.main 开头的配置信息绑定到 SpringApplication
 		bindToSpringApplication(environment);
 		if (!this.isCustomEnvironment) {
 			environment = new EnvironmentConverter(getClassLoader()).convertEnvironmentIfNecessary(environment,
@@ -384,6 +389,7 @@ public class SpringApplication {
 		// Load the sources
 		Set<Object> sources = getAllSources();
 		Assert.notEmpty(sources, "Sources must not be empty");
+		// 读取配置累
 		load(context, sources.toArray(new Object[0]));
 		listeners.contextLoaded(context);
 	}
@@ -655,6 +661,7 @@ public class SpringApplication {
 		if (this.environment != null) {
 			loader.setEnvironment(this.environment);
 		}
+		// 读取配置累
 		loader.load();
 	}
 
@@ -1259,6 +1266,7 @@ public class SpringApplication {
 	 * @return the running {@link ApplicationContext}
 	 */
 	public static ConfigurableApplicationContext run(Class<?> primarySource, String... args) {
+		// primarySource 就是当前启动类
 		return run(new Class<?>[] { primarySource }, args);
 	}
 
@@ -1270,6 +1278,7 @@ public class SpringApplication {
 	 * @return the running {@link ApplicationContext}
 	 */
 	public static ConfigurableApplicationContext run(Class<?>[] primarySources, String[] args) {
+		// primarySource 就是当前启动类
 		return new SpringApplication(primarySources).run(args);
 	}
 

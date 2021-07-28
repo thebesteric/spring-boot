@@ -16,20 +16,8 @@
 
 package org.springframework.boot.web.servlet.support;
 
-import java.sql.Driver;
-import java.sql.DriverManager;
-import java.sql.SQLException;
-import java.util.Collections;
-
-import javax.servlet.Filter;
-import javax.servlet.Servlet;
-import javax.servlet.ServletContext;
-import javax.servlet.ServletContextEvent;
-import javax.servlet.ServletException;
-
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.builder.ParentContextApplicationContextInitializer;
 import org.springframework.boot.builder.SpringApplicationBuilder;
@@ -49,6 +37,12 @@ import org.springframework.web.WebApplicationInitializer;
 import org.springframework.web.context.ConfigurableWebEnvironment;
 import org.springframework.web.context.ContextLoaderListener;
 import org.springframework.web.context.WebApplicationContext;
+
+import javax.servlet.*;
+import java.sql.Driver;
+import java.sql.DriverManager;
+import java.sql.SQLException;
+import java.util.Collections;
 
 /**
  * An opinionated {@link WebApplicationInitializer} to run a {@link SpringApplication}
@@ -94,6 +88,7 @@ public abstract class SpringBootServletInitializer implements WebApplicationInit
 		// Logger initialization is deferred in case an ordered
 		// LogServletContextInitializer is being used
 		this.logger = LogFactory.getLog(getClass());
+		// ★★★ 创建上下文，并启动 main 方法
 		WebApplicationContext rootApplicationContext = createRootApplicationContext(servletContext);
 		if (rootApplicationContext != null) {
 			servletContext.addListener(new SpringBootContextLoaderListener(rootApplicationContext, servletContext));
@@ -127,6 +122,7 @@ public abstract class SpringBootServletInitializer implements WebApplicationInit
 	}
 
 	protected WebApplicationContext createRootApplicationContext(ServletContext servletContext) {
+		// 创建 SpringApplication 实例
 		SpringApplicationBuilder builder = createSpringApplicationBuilder();
 		builder.main(getClass());
 		ApplicationContext parent = getExistingRootWebApplicationContext(servletContext);
@@ -137,8 +133,11 @@ public abstract class SpringBootServletInitializer implements WebApplicationInit
 		}
 		builder.initializers(new ServletContextApplicationContextInitializer(servletContext));
 		builder.contextFactory((webApplicationType) -> new AnnotationConfigServletWebServerApplicationContext());
+		// 配置启动类，因为外置 tomcat 模式下，会继承 SpringBootServletInitializer，并从写 configure 方法
+		// builder.source(App.class) 来指定启动类，将启动累加入 source 集合中
 		builder = configure(builder);
 		builder.listeners(new WebEnvironmentPropertySourceInitializer(servletContext));
+		// 创建启动类，从 source 集合中获取启动类，给 SpringApplication 添加启动类
 		SpringApplication application = builder.build();
 		if (application.getAllSources().isEmpty()
 				&& MergedAnnotations.from(getClass(), SearchStrategy.TYPE_HIERARCHY).isPresent(Configuration.class)) {
@@ -152,6 +151,7 @@ public abstract class SpringBootServletInitializer implements WebApplicationInit
 			application.addPrimarySources(Collections.singleton(ErrorPageFilterConfiguration.class));
 		}
 		application.setRegisterShutdownHook(false);
+		// 执行启动类
 		return run(application);
 	}
 

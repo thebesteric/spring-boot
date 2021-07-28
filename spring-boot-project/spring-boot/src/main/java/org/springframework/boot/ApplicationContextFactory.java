@@ -45,8 +45,10 @@ public interface ApplicationContextFactory {
 		try {
 			switch (webApplicationType) {
 			case SERVLET:
+				// servlet application
 				return new AnnotationConfigServletWebServerApplicationContext();
 			case REACTIVE:
+				// webflux application
 				return new AnnotationConfigReactiveWebServerApplicationContext();
 			default:
 				return new AnnotationConfigApplicationContext();

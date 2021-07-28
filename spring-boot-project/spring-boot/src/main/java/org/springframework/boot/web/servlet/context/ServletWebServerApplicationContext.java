@@ -16,23 +16,8 @@
 
 package org.springframework.boot.web.servlet.context;
 
-import java.util.Collection;
-import java.util.Collections;
-import java.util.EventListener;
-import java.util.HashMap;
-import java.util.LinkedHashSet;
-import java.util.Map;
-import java.util.Set;
-
-import javax.servlet.Filter;
-import javax.servlet.Servlet;
-import javax.servlet.ServletConfig;
-import javax.servlet.ServletContext;
-import javax.servlet.ServletException;
-
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.beans.factory.config.Scope;
@@ -55,11 +40,10 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.context.ContextLoaderListener;
 import org.springframework.web.context.ServletContextAware;
 import org.springframework.web.context.WebApplicationContext;
-import org.springframework.web.context.support.GenericWebApplicationContext;
-import org.springframework.web.context.support.ServletContextAwareProcessor;
-import org.springframework.web.context.support.ServletContextResource;
-import org.springframework.web.context.support.ServletContextScope;
-import org.springframework.web.context.support.WebApplicationContextUtils;
+import org.springframework.web.context.support.*;
+
+import javax.servlet.*;
+import java.util.*;
 
 /**
  * A {@link WebApplicationContext} that can be used to bootstrap itself from a contained
@@ -157,6 +141,7 @@ public class ServletWebServerApplicationContext extends GenericWebApplicationCon
 	protected void onRefresh() {
 		super.onRefresh();
 		try {
+			// 创建 web 服务
 			createWebServer();
 		}
 		catch (Throwable ex) {
@@ -174,11 +159,17 @@ public class ServletWebServerApplicationContext extends GenericWebApplicationCon
 
 	private void createWebServer() {
 		WebServer webServer = this.webServer;
+		// 获取 servletContext 判断是是否是内置的 web 容器
+		// 内置的 tomcat：servletContext 为 null
 		ServletContext servletContext = getServletContext();
+		// 内置的 Tomcat
 		if (webServer == null && servletContext == null) {
 			StartupStep createWebServer = this.getApplicationStartup().start("spring.boot.webserver.create");
+			// ★★★ 去容器中获取 ServletWebServerFactory 类型的 bean 对象
+			// ★★★ 这个是由 ServletWebServerFactoryAutoConfiguration 来提供注入的
 			ServletWebServerFactory factory = getWebServerFactory();
 			createWebServer.tag("factory", factory.getClass().toString());
+			// ★★★ 创建 WebServer 实例
 			this.webServer = factory.getWebServer(getSelfInitializer());
 			createWebServer.end();
 			getBeanFactory().registerSingleton("webServerGracefulShutdown",
@@ -186,8 +177,11 @@ public class ServletWebServerApplicationContext extends GenericWebApplicationCon
 			getBeanFactory().registerSingleton("webServerStartStop",
 					new WebServerStartStopLifecycle(this, this.webServer));
 		}
+		// 外置的 Tomcat
 		else if (servletContext != null) {
 			try {
+				// ★★★ Servlet 3.1 标准中，会去 spring-web 项目下的 META-INF/services 中去找以 ServletContainerInitializer 接口命名的文件
+				// 即：SpringServletContainerInitializer.onStartup
 				getSelfInitializer().onStartup(servletContext);
 			}
 			catch (ServletException ex) {
@@ -224,6 +218,7 @@ public class ServletWebServerApplicationContext extends GenericWebApplicationCon
 	 * @see #prepareWebApplicationContext(ServletContext)
 	 */
 	private org.springframework.boot.web.servlet.ServletContextInitializer getSelfInitializer() {
+		// 传递函数指针，并不是真正的调用
 		return this::selfInitialize;
 	}
 
@@ -231,6 +226,8 @@ public class ServletWebServerApplicationContext extends GenericWebApplicationCon
 		prepareWebApplicationContext(servletContext);
 		registerApplicationScope(servletContext);
 		WebApplicationContextUtils.registerEnvironmentBeans(getBeanFactory(), servletContext);
+		// 这里会获取到 DispatcherServletRegistrationBean，是通过 DispatcherServletAutoConfiguration 自动配置类添加的
+		// DispatcherServletRegistrationBean 实现了 ServletContextInitializer 接库
 		for (ServletContextInitializer beans : getServletContextInitializerBeans()) {
 			beans.onStartup(servletContext);
 		}

@@ -133,6 +133,7 @@ class BeanDefinitionLoader {
 	 */
 	void load() {
 		for (Object source : this.sources) {
+			// 读取配置累
 			load(source);
 		}
 	}
@@ -140,6 +141,7 @@ class BeanDefinitionLoader {
 	private void load(Object source) {
 		Assert.notNull(source, "Source must not be null");
 		if (source instanceof Class<?>) {
+			// 读取配置累
 			load((Class<?>) source);
 			return;
 		}
@@ -165,6 +167,7 @@ class BeanDefinitionLoader {
 			((GroovyBeanDefinitionReader) this.groovyReader).beans(loader.getBeans());
 		}
 		if (isEligible(source)) {
+			// 加载配置累
 			this.annotatedReader.register(source);
 		}
 	}
